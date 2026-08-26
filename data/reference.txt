@@ -1,0 +1,4 @@
+Reference
+1. input_data.xlsx
+
+2. germany-seasonal-co2-v2(by-Notebook-LM).xlsx
