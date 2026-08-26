@@ -1,7 +1,12 @@
 import pandas as pd
+from pathlib import Path
 
-INPUT_FILES = r'C:\Users\admin\PycharmProjects\EnergyProject\data\germany-seasonal-co2-v2(by-Notebook-LM).xlsx'
-
+PROJECT_DIR = Path(__file__).resolve().parent.parent
+INPUT_FILES = (
+    PROJECT_DIR
+    / "data"
+    / "germany-seasonal-co2-v2(by-Notebook-LM).xlsx"
+)
 HOUR_LIST = list(range(24))
 
 # =====================================================================

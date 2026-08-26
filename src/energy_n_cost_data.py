@@ -1,6 +1,8 @@
+from pathlib import Path
 import pandas as pd
 
-INPUT_FILE = r"C:\Users\admin\PycharmProjects\EnergyProject\data\input_data.xlsx"
+PROJECT_DIR = Path(__file__).resolve().parent.parent
+INPUT_FILE = PROJECT_DIR / "data" / "input_data.xlsx"
 HOURS_PER_YEAR = 8760
 
 # =========================================================================

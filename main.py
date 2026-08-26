@@ -1,10 +1,25 @@
-# This is a sample Python script.
-
-# Press Shift+F10 to execute it or replace it with your code.
-# Press Double Shift to search everywhere for classes, files, tool windows, actions, and settings.
-
-
-# Press the green button in the gutter to run the script.
+import subprocess
+import sys
+from pathlib import Path
 
 
-# See PyCharm help at https://www.jetbrains.com/help/pycharm/
+PROJECT_DIR = Path(__file__).resolve().parent
+SRC_DIR = PROJECT_DIR / "src"
+
+
+def main():
+    subprocess.run(
+        [sys.executable, SRC_DIR / "plotting.py"],
+        check=True
+    )
+
+    subprocess.run(
+        [sys.executable, SRC_DIR / "plotting_cost_heat.py"],
+        check=True
+    )
+
+    print("All figures have been generated.")
+
+
+if __name__ == "__main__":
+    main()
