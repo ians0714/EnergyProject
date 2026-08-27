@@ -1,4 +1,23 @@
 Reference
 1. input_data.xlsx
 
+
 2. germany-seasonal-co2-v2(by-Notebook-LM).xlsx
+
+
+3. wind
+Wind availability / capacity factor data
+Source: Renewables.ninja
+Dataset: Wind - Current fleet, onshore, MERRA-2 (hourly data, 1980-2024)
+Website: https://www.renewables.ninja/
+License: Creative Commons Attribution-NonCommercial 4.0 (CC BY-NC 4.0)
+
+Citation:
+Staffell, I. and Pfenninger, S. (2016).
+Using bias-corrected reanalysis to simulate current and future wind power output.
+Energy, 114, 1224-1239.
+https://doi.org/10.1016/j.energy.2016.08.068
+
+Project use:
+Germany onshore hourly wind capacity factor was extracted for [YEAR]
+and used as the hourly wind availability profile.

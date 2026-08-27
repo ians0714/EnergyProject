@@ -3,6 +3,7 @@ import pandas as pd
 
 from energy_n_cost_data import technologies, grids, carbon_price
 from germany_seasonal_co2_data import hourly_data, monthly_data, seasonal_data, annual_average_data, HOUR_LIST
+from wind_data import wind_data
 
 # Assumption
 DATACENTER_DEMAND_MW = 100
@@ -12,6 +13,12 @@ def solve_dispatch(input_data, time_resolution):
     data = input_data.reset_index(drop=True)
     grid_price = data["Price"]
     grid_carbon_intensity = data["CO2_Intensity"] / 1000
+
+    wind_daily = wind_data.loc["2023-08-27"]
+    wind_capacity_factor = (
+        wind_daily["Wind_Capacity_Factor"]
+        .reset_index(drop=True)
+    )
 
     print(f"\n===== {time_resolution} =====")
 
@@ -31,6 +38,7 @@ def solve_dispatch(input_data, time_resolution):
             * carbon_price
             ) for tech in technologies.index
         }
+
     # Hourly Effective Grid Cost
     grid_cost = {
         t: (
@@ -79,23 +87,6 @@ def solve_dispatch(input_data, time_resolution):
                 <= technologies.loc[tech, "capacity_mw"]
                 * technologies.loc[tech, "capacity_factor"]
             )
-    # 3. Grid Capacity
-    for t in HOUR_LIST:
-        problem += (
-            grid_import[t]
-            <= grids.loc[t, "grid_amount_mwh"] / 365
-        )
-    # 4. CO2 Capacity (*Additional*)
-    # for t in HOUR_LIST:
-    #     problem += (
-    #         pulp.lpSum(
-    #             technologies.loc[tech, "emission_factor_tco2_mwh"]
-    #             * generation[tech, t]
-    #             for tech in technologies.index
-    #         )
-    #         + grid_import[t] * grid_carbon_intensity.loc[t]
-    #         <=
-    #     )
     # Objective
     problem += (
         pulp.lpSum(
@@ -145,6 +136,111 @@ def solve_dispatch(input_data, time_resolution):
     result.index.name = "Hour"
     return result
 
+def summarize_dispatch(result, scenario_name):
+    summary = []
+
+    # Onsite technologies
+    for tech in technologies.index:
+        generation_mwh = result[tech].sum()
+
+        emission_factor = technologies.loc[
+            tech, "emission_factor_tco2_mwh"
+        ]
+
+        base_cost_per_mwh = (
+            technologies.loc[tech, "LCOE_eur_mwh"]
+            + technologies.loc[tech, "additional_cost_eur_mwh"]
+        )
+
+        carbon_emission = (
+            generation_mwh * emission_factor
+        )
+
+        energy_cost = (
+            generation_mwh * base_cost_per_mwh
+        )
+
+        carbon_cost = (
+            carbon_emission * carbon_price
+        )
+
+        total_cost = (
+            energy_cost + carbon_cost
+        )
+
+        summary.append({
+            "Scenario": scenario_name,
+            "Energy_Source": tech,
+            "Generation_MWh": generation_mwh,
+            "CO2_Emission_t": carbon_emission,
+            "Energy_Cost_EUR": energy_cost,
+            "Carbon_Cost_EUR": carbon_cost,
+            "Total_Cost_EUR": total_cost
+        })
+
+    # Grid
+    grid_generation = result["Grid"].sum()
+
+    grid_emission = (
+        result["Grid"]
+        * result["Grid_CO2"]
+    ).sum()
+
+    grid_energy_cost = (
+        result["Grid"]
+        * result["Grid_Price"]
+    ).sum()
+
+    grid_carbon_cost = (
+        grid_emission * carbon_price
+    )
+
+    grid_total_cost = (
+        grid_energy_cost + grid_carbon_cost
+    )
+
+    summary.append({
+        "Scenario": scenario_name,
+        "Energy_Source": "Grid",
+        "Generation_MWh": grid_generation,
+        "CO2_Emission_t": grid_emission,
+        "Energy_Cost_EUR": grid_energy_cost,
+        "Carbon_Cost_EUR": grid_carbon_cost,
+        "Total_Cost_EUR": grid_total_cost
+    })
+
+    total_generation = sum(
+        row["Generation_MWh"] for row in summary
+    )
+
+    total_emission = sum(
+        row["CO2_Emission_t"] for row in summary
+    )
+
+    total_energy_cost = sum(
+        row["Energy_Cost_EUR"] for row in summary
+    )
+
+    total_carbon_cost = sum(
+        row["Carbon_Cost_EUR"] for row in summary
+    )
+
+    total_cost = sum(
+        row["Total_Cost_EUR"] for row in summary
+    )
+
+    summary.append({
+        "Scenario": scenario_name,
+        "Energy_Source": "TOTAL",
+        "Generation_MWh": total_generation,
+        "CO2_Emission_t": total_emission,
+        "Energy_Cost_EUR": total_energy_cost,
+        "Carbon_Cost_EUR": total_carbon_cost,
+        "Total_Cost_EUR": total_cost
+    })
+
+    return pd.DataFrame(summary)
+
 # 4 Iterations
 hourly_result = solve_dispatch(
     hourly_data,
@@ -166,14 +262,36 @@ annual_result = solve_dispatch(
     "Annual"
 )
 
-print("\nHourly")
-print(hourly_result)
 
-print("\nMonthly")
-print(monthly_result)
+hourly_summary = summarize_dispatch(
+    hourly_result,
+    "Hourly"
+)
 
-print("\nSeasonal")
-print(seasonal_result)
+monthly_summary = summarize_dispatch(
+    monthly_result,
+    "Monthly"
+)
 
-print("\nAnnual")
-print(annual_result)
+seasonal_summary = summarize_dispatch(
+    seasonal_result,
+    "Seasonal"
+)
+
+annual_summary = summarize_dispatch(
+    annual_result,
+    "Annual"
+)
+
+all_summary = pd.concat(
+    [
+        hourly_summary,
+        monthly_summary,
+        seasonal_summary,
+        annual_summary
+    ],
+    ignore_index=True
+)
+
+print("\n===== Summary =====")
+print(all_summary.to_string(index=False))
