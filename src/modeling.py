@@ -85,7 +85,17 @@ def solve_dispatch(input_data, time_resolution):
             grid_import[t]
             <= grids.loc[t, "grid_amount_mwh"] / 365
         )
-
+    # 4. CO2 Capacity (*Additional*)
+    # for t in HOUR_LIST:
+    #     problem += (
+    #         pulp.lpSum(
+    #             technologies.loc[tech, "emission_factor_tco2_mwh"]
+    #             * generation[tech, t]
+    #             for tech in technologies.index
+    #         )
+    #         + grid_import[t] * grid_carbon_intensity.loc[t]
+    #         <=
+    #     )
     # Objective
     problem += (
         pulp.lpSum(
