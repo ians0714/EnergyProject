@@ -1,89 +1,154 @@
-# plotting.py
-from modeling import (
-    hourly_result,
-    monthly_result,
-    seasonal_result,
-    annual_result,
-    DATACENTER_DEMAND_MW,
+import matplotlib.pyplot as plt
+from pathlib import Path
+
+
+# ============================================================
+# Figure Directory
+# ============================================================
+
+FIGURE_DIR = (
+    Path(__file__).resolve().parent.parent
+    / "figure"
 )
 
-from pathlib import Path
-import matplotlib.pyplot as plt
+FIGURE_DIR.mkdir(
+    exist_ok=True
+)
 
-FIGURE_DIR = Path(__file__).resolve().parent.parent / "figure"
-FIGURE_DIR.mkdir(exist_ok=True)
 
-def plot_dispatch(result, title, filename):
+# ============================================================
+# Energy Mix Plot
+# ============================================================
 
-    exclude_columns = [
-        "Grid_Price",
-        "Grid_CO2",
-        "Grid_Effective_Cost",
+def plot_energy_mix(
+        result,
+        resolution
+):
+
+    # --------------------------------------------------------
+    # 1. Energy Sources
+    # --------------------------------------------------------
+
+    energy_sources = [
+        "Wind",
+        "Gas turebine",
+        "Coal",
+        "Nuclear",
+        "Biomass",
+        "BioCH4-Gas Turebine",
+        "Grid"
     ]
 
-    generation_columns = [
-        col
-        for col in result.columns
-        if col not in exclude_columns
+    # Only plot sources that are actually used
+    active_sources = [
+        source
+        for source in energy_sources
+        if result[source].abs().max() > 1e-6
     ]
 
-    plt.figure(figsize=(12, 6))
-
-    plt.stackplot(
-        result.index,
-        *[result[col] for col in generation_columns],
-        labels=generation_columns,
+    print(
+        f"{resolution} active sources:",
+        active_sources
     )
 
-    plt.title(title)
-    plt.xlabel("Hour of Day")
-    plt.ylabel("Power Supply [MW]")
 
-    plt.xlim(0, 23)
-    plt.ylim(0, DATACENTER_DEMAND_MW)
+    # --------------------------------------------------------
+    # 2. Figure Size
+    # --------------------------------------------------------
 
-    plt.xticks(range(0, 24, 2))
+    if resolution == "day":
+        figure_width = 12
 
-    plt.legend(
+    elif resolution == "month":
+        figure_width = 30
+
+    elif resolution == "season":
+        figure_width = 60
+
+    elif resolution == "year":
+        figure_width = 150
+
+    else:
+        figure_width = 12
+
+
+    # --------------------------------------------------------
+    # 3. Plot
+    # --------------------------------------------------------
+
+    ax = result[active_sources].plot(
+        kind="area",
+        stacked=True,
+        figsize=(figure_width, 6)
+    )
+
+
+    # --------------------------------------------------------
+    # 4. Data Center Demand
+    # --------------------------------------------------------
+
+    ax.axhline(
+        y=100,
+        linestyle="--",
+        linewidth=1.5,
+        label="Data Center Demand"
+    )
+
+
+    # --------------------------------------------------------
+    # 5. Labels
+    # --------------------------------------------------------
+
+    ax.set_title(
+        f"Data Center Energy Mix - "
+        f"{resolution.capitalize()}"
+    )
+
+    ax.set_xlabel(
+        "Time"
+    )
+
+    ax.set_ylabel(
+        "Power (MW)"
+    )
+
+    ax.set_ylim(
+        0,
+        105
+    )
+
+
+    # --------------------------------------------------------
+    # 6. Legend
+    # --------------------------------------------------------
+
+    ax.legend(
         loc="upper left",
-        bbox_to_anchor=(1.02, 1),
+        bbox_to_anchor=(1.01, 1)
     )
 
-    plt.grid(
+
+    # --------------------------------------------------------
+    # 7. Grid
+    # --------------------------------------------------------
+
+    ax.grid(
         axis="y",
-        alpha=0.3,
+        alpha=0.3
     )
+
+
+    # --------------------------------------------------------
+    # 8. Save
+    # --------------------------------------------------------
+
+    plt.tight_layout()
 
     plt.savefig(
-        FIGURE_DIR / filename,
-        dpi=300,
+        FIGURE_DIR
+        / f"plot_resolution_{resolution}.png",
+        dpi=200,
         bbox_inches="tight"
     )
 
-    plt.tight_layout()
-    plt.show()
-
-
-plot_dispatch(
-    hourly_result,
-    "Hourly Data Center Power Supply Mix - August 27",
-    "hourly_supply_mix.png",
-)
-
-plot_dispatch(
-    monthly_result,
-    "Monthly Average Data Center Power Supply Mix - August",
-    "monthly_supply_mix.png",
-)
-
-plot_dispatch(
-    seasonal_result,
-    "Seasonal Average Data Center Power Supply Mix - Summer",
-    "seasonal_supply_mix.png",
-)
-
-plot_dispatch(
-    annual_result,
-    "Annual Average Data Center Power Supply Mix",
-    "annual_supply_mix.png",
-)
+    plt.close()

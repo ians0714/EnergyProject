@@ -1,76 +1,176 @@
 import pulp
 import pandas as pd
 
-from energy_n_cost_data import technologies, grids, carbon_price
-from germany_seasonal_co2_data import hourly_data, monthly_data, seasonal_data, annual_average_data, HOUR_LIST
-from wind_data import wind_data
+from src.energy_n_cost_data import technologies, carbon_price
+from src.germany_seasonal_co2_data import grid_data
+from src.wind_data import wind_data
 
-# Assumption
+# ============================================================
+# Assumptions
+# ============================================================
+
 DATACENTER_DEMAND_MW = 100
+SELECTED_DATE = "2023-08-27"
 
-# Dispatch Model
-def solve_dispatch(input_data, time_resolution):
-    data = input_data.reset_index(drop=True)
-    grid_price = data["Price"]
-    grid_carbon_intensity = data["CO2_Intensity"] / 1000
+SEASON_MONTHS = {
+    "spring": [3, 4, 5],
+    "summer": [6, 7, 8],
+    "fall": [9, 10, 11],
+    "winter": [12, 1, 2]
+}
 
-    wind_daily = wind_data.loc["2023-08-27"]
-    wind_capacity_factor = (
-        wind_daily["Wind_Capacity_Factor"]
+resolutions = ["day", "month", "season", "year"]
+
+# Prepare for Time Resolution
+def prepare_data(date, resolution):
+    month = date.month
+
+    if resolution == resolutions[0]:
+        day = date.day
+        grid_selected = grid_data[(grid_data.index.month == month) & (grid_data.index.day == day)].copy()
+        wind_selected = wind_data[(wind_data.index.month == month) & (wind_data.index.day == day)].copy()
+    elif resolution == resolutions[1]:
+        grid_selected = grid_data[(grid_data.index.month == month)].copy()
+        wind_selected = wind_data[(wind_data.index.month == month)].copy()
+    elif resolution == resolutions[2]:
+        season = (
+            "spring" if month in [3, 4, 5]
+            else "summer" if month in [6, 7, 8]
+            else "fall" if month in [9, 10, 11]
+            else "winter"
+        )
+
+        season_date = SEASON_MONTHS[season]
+
+        grid_selected = grid_data[
+            grid_data.index.month.isin(season_date)
+        ].copy()
+
+        wind_selected = wind_data[
+            wind_data.index.month.isin(season_date)
+        ].copy()
+
+    elif resolution == resolutions[3]:
+        grid_selected = grid_data.copy()
+        wind_selected = wind_data.copy()
+
+    else:
+        raise ValueError(
+            "resolution must be day, month, season, or year"
+        )
+
+    grid_selected["Time_Key"] = (
+        grid_selected.index.strftime("%m-%d %H:%M")
+    )
+
+    wind_selected["Time_Key"] = (
+        wind_selected.index.strftime("%m-%d %H:%M")
+    )
+
+    grid_wind_selected = pd.merge(grid_selected,
+    wind_selected[["Wind_Capacity_Factor", "Time_Key"]],
+    on="Time_Key")
+
+    grid_wind_selected = (
+        grid_wind_selected
+        .sort_values("Time_Key")
         .reset_index(drop=True)
     )
 
-    print(f"\n===== {time_resolution} =====")
+    return grid_wind_selected
 
-    for t in HOUR_LIST:
-        print(
-            t,
-            "Price =", grid_price.loc[t],
-            "CO2 =", grid_carbon_intensity.loc[t]
-        )
+# ============================================================
+# Dispatch Model
+# ============================================================
 
-    # Effective Technology Costs
+def solve_dispatch(time_resolution, selected_date):
+
+    # --------------------------------------------------------
+    # 1. Input data
+    # --------------------------------------------------------
+
+    data = prepare_data(selected_date, time_resolution)
+
+    grid_price = data["Price"]
+
+    grid_carbon_intensity = (
+        data["CO2_Intensity"] / 1000
+    )
+
+    wind_capacity_factor = (
+        data["Wind_Capacity_Factor"]
+    )
+
+    time_steps = range(len(data))
+
+    # --------------------------------------------------------
+    # 3. Effective Technology Costs
+    # --------------------------------------------------------
+
     technology_cost = {
-        tech : (
+        tech: (
             technologies.loc[tech, "LCOE_eur_mwh"]
-            + technologies.loc[tech, "additional_cost_eur_mwh"]
-            + technologies.loc[tech, "emission_factor_tco2_mwh"]
-            * carbon_price
-            ) for tech in technologies.index
-        }
+            + technologies.loc[
+                tech,
+                "additional_cost_eur_mwh"
+            ]
+            + technologies.loc[
+                tech,
+                "emission_factor_tco2_mwh"
+            ] * carbon_price
+        )
+        for tech in technologies.index
+    }
 
-    # Hourly Effective Grid Cost
+    # --------------------------------------------------------
+    # 4. Hourly Effective Grid Cost
+    # --------------------------------------------------------
+
     grid_cost = {
         t: (
             grid_price.loc[t]
-            + grid_carbon_intensity.loc[t] * carbon_price
-        ) for t in HOUR_LIST
+            + grid_carbon_intensity.loc[t]
+            * carbon_price
+        )
+        for t in time_steps
     }
 
-    # Model
+    # --------------------------------------------------------
+    # 5. Optimization Model
+    # --------------------------------------------------------
+
     problem = pulp.LpProblem(
         f"data_center_dispatch_{time_resolution}",
         pulp.LpMinimize
     )
 
-    # Variables
+    # --------------------------------------------------------
+    # 6. Decision Variables
+    # --------------------------------------------------------
+
     generation = {
         (tech, t): pulp.LpVariable(
             f"{time_resolution}_{tech}_{t}",
-            lowBound = 0
-        ) for tech in technologies.index for t in HOUR_LIST
+            lowBound=0
+        )
+        for tech in technologies.index
+        for t in time_steps
     }
 
     grid_import = {
-        t : pulp.LpVariable(
+        t: pulp.LpVariable(
             f"{time_resolution}_grid_{t}",
             lowBound=0
-        ) for t in HOUR_LIST
+        )
+        for t in time_steps
     }
 
-    # Constraints
-    # 1. Supply = Demand
-    for t in HOUR_LIST:
+    # --------------------------------------------------------
+    # 7. Constraint 1: Supply = Demand
+    # --------------------------------------------------------
+
+    for t in time_steps:
+
         problem += (
             pulp.lpSum(
                 generation[tech, t]
@@ -79,107 +179,252 @@ def solve_dispatch(input_data, time_resolution):
             + grid_import[t]
             == DATACENTER_DEMAND_MW
         )
-    # 2. Generation Capacity
+
+    # --------------------------------------------------------
+    # 8. Constraint 2: Generation Capacity
+    # --------------------------------------------------------
+
     for tech in technologies.index:
-        for t in HOUR_LIST:
-            problem += (
-                generation[tech, t]
-                <= technologies.loc[tech, "capacity_mw"]
-                * technologies.loc[tech, "capacity_factor"]
-            )
-    # Objective
+
+        for t in time_steps:
+
+            # Wind:
+            # Must-take generation based on hourly Wind CF
+            if tech == "Wind":
+
+                wind_available = (
+                    technologies.loc[
+                        tech,
+                        "capacity_mw"
+                    ]
+                    * wind_capacity_factor.loc[t]
+                )
+
+                problem += (
+                    generation[tech, t]
+                    == min(
+                        wind_available,
+                        DATACENTER_DEMAND_MW
+                    ) # If Energy Generated Over Demand, Surplus Curtailed
+                )
+
+            # Other onsite technologies:
+            # No input Capacity Factor
+            else:
+
+                problem += (
+                    generation[tech, t]
+                    <= technologies.loc[
+                        tech,
+                        "capacity_mw"
+                    ]
+                )
+
+    # --------------------------------------------------------
+    # 9. Objective Function
+    # --------------------------------------------------------
+
     problem += (
         pulp.lpSum(
-            generation[tech, t] * technology_cost[tech]
+            generation[tech, t]
+            * technology_cost[tech]
             for tech in technologies.index
-            for t in HOUR_LIST
+            for t in time_steps
         )
         +
         pulp.lpSum(
-            grid_import[t] * grid_cost[t]
-            for t in HOUR_LIST
+            grid_import[t]
+            * grid_cost[t]
+            for t in time_steps
         )
     )
 
-    # Solve
+    # --------------------------------------------------------
+    # 10. Solve
+    # --------------------------------------------------------
+
     problem.solve(
-        pulp.PULP_CBC_CMD(msg=False)
+        pulp.PULP_CBC_CMD(
+            msg=False
+        )
     )
+
     print(
-        time_resolution, ":", pulp.LpStatus[problem.status]
+        "\nOptimization status:",
+        pulp.LpStatus[problem.status]
     )
 
-    # Save
+    # --------------------------------------------------------
+    # 11. Save Results
+    # --------------------------------------------------------
 
-    result = pd.DataFrame(index=HOUR_LIST)
+    result = pd.DataFrame(
+        index=time_steps
+    )
+
     for tech in technologies.index:
         result[tech] = [
             generation[tech, t].value()
-            for t in HOUR_LIST
+            for t in time_steps
         ]
+
     result["Grid"] = [
         grid_import[t].value()
-        for t in HOUR_LIST
+        for t in time_steps
     ]
+
     result["Grid_Price"] = [
         grid_price.loc[t]
-        for t in HOUR_LIST
+        for t in time_steps
     ]
+
     result["Grid_CO2"] = [
         grid_carbon_intensity.loc[t]
-        for t in HOUR_LIST
+        for t in time_steps
     ]
+
     result["Grid_Effective_Cost"] = [
         grid_cost[t]
-        for t in HOUR_LIST
+        for t in time_steps
     ]
-    result.index.name = "Hour"
+
+    result["Wind_CF"] = [
+        wind_capacity_factor.loc[t]
+        for t in time_steps
+    ]
+
+    result["Wind_Available"] = [
+        technologies.loc["Wind", "capacity_mw"]
+        * wind_capacity_factor.loc[t]
+        for t in time_steps
+    ]
+
+    result["Time"] = [
+        data.loc[t, "Time_Key"]
+        for t in time_steps
+    ]
+
+    result.index.name = "Time_Step"
+
     return result
 
-def summarize_dispatch(result, scenario_name):
+# ============================================================
+# Summary
+# ============================================================
+
+def summarize_dispatch(
+        result,
+        scenario_name
+):
+
     summary = []
 
-    # Onsite technologies
-    for tech in technologies.index:
-        generation_mwh = result[tech].sum()
+    number_of_hours = len(result)
 
-        emission_factor = technologies.loc[
-            tech, "emission_factor_tco2_mwh"
-        ]
+    # --------------------------------------------------------
+    # 1. Onsite Technologies
+    # --------------------------------------------------------
+
+    for tech in technologies.index:
+
+        generation_mwh = (
+            result[tech].sum()
+        )
+
+        installed_capacity = (
+            technologies.loc[
+                tech,
+                "capacity_mw"
+            ]
+        )
+
+        emission_factor = (
+            technologies.loc[
+                tech,
+                "emission_factor_tco2_mwh"
+            ]
+        )
 
         base_cost_per_mwh = (
-            technologies.loc[tech, "LCOE_eur_mwh"]
-            + technologies.loc[tech, "additional_cost_eur_mwh"]
+            technologies.loc[
+                tech,
+                "LCOE_eur_mwh"
+            ]
+            + technologies.loc[
+                tech,
+                "additional_cost_eur_mwh"
+            ]
         )
 
+        # CO2 emissions
         carbon_emission = (
-            generation_mwh * emission_factor
+            generation_mwh
+            * emission_factor
         )
 
+        # Energy cost
         energy_cost = (
-            generation_mwh * base_cost_per_mwh
+            generation_mwh
+            * base_cost_per_mwh
         )
 
+        # Carbon cost
         carbon_cost = (
-            carbon_emission * carbon_price
+            carbon_emission
+            * carbon_price
         )
 
+        # Total cost
         total_cost = (
-            energy_cost + carbon_cost
+            energy_cost
+            + carbon_cost
         )
+
+        # --------------------------------------------
+        # Capacity Factor / Utilization
+        # --------------------------------------------
+
+        if installed_capacity > 0:
+
+            calculated_cf = (
+                generation_mwh
+                /
+                (
+                    installed_capacity
+                    * number_of_hours
+                )
+            )
+
+        else:
+
+            calculated_cf = 0
 
         summary.append({
             "Scenario": scenario_name,
             "Energy_Source": tech,
-            "Generation_MWh": generation_mwh,
-            "CO2_Emission_t": carbon_emission,
-            "Energy_Cost_EUR": energy_cost,
-            "Carbon_Cost_EUR": carbon_cost,
-            "Total_Cost_EUR": total_cost
+            "Installed_Capacity_MW":
+                installed_capacity,
+            "Generation_MWh":
+                generation_mwh,
+            "Calculated_CF_Percent":
+                calculated_cf * 100,
+            "CO2_Emission_t":
+                carbon_emission,
+            "Energy_Cost_EUR":
+                energy_cost,
+            "Carbon_Cost_EUR":
+                carbon_cost,
+            "Total_Cost_EUR":
+                total_cost
         })
 
-    # Grid
-    grid_generation = result["Grid"].sum()
+    # --------------------------------------------------------
+    # 2. Grid
+    # --------------------------------------------------------
+
+    grid_generation = (
+        result["Grid"].sum()
+    )
 
     grid_emission = (
         result["Grid"]
@@ -192,106 +437,76 @@ def summarize_dispatch(result, scenario_name):
     ).sum()
 
     grid_carbon_cost = (
-        grid_emission * carbon_price
+        grid_emission
+        * carbon_price
     )
 
     grid_total_cost = (
-        grid_energy_cost + grid_carbon_cost
+        grid_energy_cost
+        + grid_carbon_cost
     )
 
     summary.append({
         "Scenario": scenario_name,
         "Energy_Source": "Grid",
-        "Generation_MWh": grid_generation,
-        "CO2_Emission_t": grid_emission,
-        "Energy_Cost_EUR": grid_energy_cost,
-        "Carbon_Cost_EUR": grid_carbon_cost,
-        "Total_Cost_EUR": grid_total_cost
+        "Installed_Capacity_MW": None,
+        "Generation_MWh":
+            grid_generation,
+        "Calculated_CF_Percent": None,
+        "CO2_Emission_t":
+            grid_emission,
+        "Energy_Cost_EUR":
+            grid_energy_cost,
+        "Carbon_Cost_EUR":
+            grid_carbon_cost,
+        "Total_Cost_EUR":
+            grid_total_cost
     })
 
+    # --------------------------------------------------------
+    # 3. Total
+    # --------------------------------------------------------
+
     total_generation = sum(
-        row["Generation_MWh"] for row in summary
+        row["Generation_MWh"]
+        for row in summary
     )
 
     total_emission = sum(
-        row["CO2_Emission_t"] for row in summary
+        row["CO2_Emission_t"]
+        for row in summary
     )
 
     total_energy_cost = sum(
-        row["Energy_Cost_EUR"] for row in summary
+        row["Energy_Cost_EUR"]
+        for row in summary
     )
 
     total_carbon_cost = sum(
-        row["Carbon_Cost_EUR"] for row in summary
+        row["Carbon_Cost_EUR"]
+        for row in summary
     )
 
     total_cost = sum(
-        row["Total_Cost_EUR"] for row in summary
+        row["Total_Cost_EUR"]
+        for row in summary
     )
 
     summary.append({
         "Scenario": scenario_name,
         "Energy_Source": "TOTAL",
-        "Generation_MWh": total_generation,
-        "CO2_Emission_t": total_emission,
-        "Energy_Cost_EUR": total_energy_cost,
-        "Carbon_Cost_EUR": total_carbon_cost,
-        "Total_Cost_EUR": total_cost
+        "Installed_Capacity_MW": None,
+        "Generation_MWh":
+            total_generation,
+        "Calculated_CF_Percent": None,
+        "CO2_Emission_t":
+            total_emission,
+        "Energy_Cost_EUR":
+            total_energy_cost,
+        "Carbon_Cost_EUR":
+            total_carbon_cost,
+        "Total_Cost_EUR":
+            total_cost
     })
 
     return pd.DataFrame(summary)
-
-# 4 Iterations
-hourly_result = solve_dispatch(
-    hourly_data,
-    "Hourly"
-)
-
-monthly_result = solve_dispatch(
-    monthly_data,
-    "Monthly"
-)
-
-seasonal_result = solve_dispatch(
-    seasonal_data,
-    "Seasonal"
-)
-
-annual_result = solve_dispatch(
-    annual_average_data,
-    "Annual"
-)
-
-
-hourly_summary = summarize_dispatch(
-    hourly_result,
-    "Hourly"
-)
-
-monthly_summary = summarize_dispatch(
-    monthly_result,
-    "Monthly"
-)
-
-seasonal_summary = summarize_dispatch(
-    seasonal_result,
-    "Seasonal"
-)
-
-annual_summary = summarize_dispatch(
-    annual_result,
-    "Annual"
-)
-
-all_summary = pd.concat(
-    [
-        hourly_summary,
-        monthly_summary,
-        seasonal_summary,
-        annual_summary
-    ],
-    ignore_index=True
-)
-
-print("\n===== Summary =====")
-print(all_summary.to_string(index=False))
