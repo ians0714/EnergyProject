@@ -1,10 +1,15 @@
 import pandas as pd
+from pathlib import Path
 
 # DATA FILE PATH
+PROJECT_DIR = Path(__file__).resolve().parent.parent
 WIND_DATA_PATH = (
-    r"C:\Users\admin\PycharmProjects\EnergyProject\data\ninja-wind-country-DE-current_onshore-merra2 - 2023.csv"
+    PROJECT_DIR
+    / "data"
+    / "ninja-wind-country-DE-current_onshore-merra2 - 2023.csv"
 )
 
+# DataFrame with Wind data
 def load_wind_data():
     # Read csv File
     df = pd.read_csv(WIND_DATA_PATH)
@@ -33,6 +38,7 @@ def load_wind_data():
 
     return df
 
+# Here Comes the Data
 wind_data = load_wind_data()
 
 # Set Time as Index

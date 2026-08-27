@@ -5,13 +5,10 @@ from src.energy_n_cost_data import technologies, carbon_price
 from src.germany_seasonal_co2_data import grid_data
 from src.wind_data import wind_data
 
-# ============================================================
-# Assumptions
-# ============================================================
-
+# Demand Assumption
 DATACENTER_DEMAND_MW = 100
-SELECTED_DATE = "2023-08-27"
 
+# Dictionary of Seasons
 SEASON_MONTHS = {
     "spring": [3, 4, 5],
     "summer": [6, 7, 8],
@@ -19,12 +16,14 @@ SEASON_MONTHS = {
     "winter": [12, 1, 2]
 }
 
+# Resolutions
 resolutions = ["day", "month", "season", "year"]
 
 # Prepare for Time Resolution
 def prepare_data(date, resolution):
     month = date.month
 
+    # Prepare Data of Certain Scale
     if resolution == resolutions[0]:
         day = date.day
         grid_selected = grid_data[(grid_data.index.month == month) & (grid_data.index.day == day)].copy()
@@ -32,7 +31,7 @@ def prepare_data(date, resolution):
     elif resolution == resolutions[1]:
         grid_selected = grid_data[(grid_data.index.month == month)].copy()
         wind_selected = wind_data[(wind_data.index.month == month)].copy()
-    elif resolution == resolutions[2]:
+    elif resolution == resolutions[2]: # Get Seasonal Data
         season = (
             "spring" if month in [3, 4, 5]
             else "summer" if month in [6, 7, 8]
@@ -54,23 +53,25 @@ def prepare_data(date, resolution):
         grid_selected = grid_data.copy()
         wind_selected = wind_data.copy()
 
-    else:
+    else: # If Error
         raise ValueError(
             "resolution must be day, month, season, or year"
         )
 
+    # Just get Month and Day from Index
     grid_selected["Time_Key"] = (
         grid_selected.index.strftime("%m-%d %H:%M")
     )
-
     wind_selected["Time_Key"] = (
         wind_selected.index.strftime("%m-%d %H:%M")
     )
 
+    # Merge Two DataFrame into one
     grid_wind_selected = pd.merge(grid_selected,
     wind_selected[["Wind_Capacity_Factor", "Time_Key"]],
     on="Time_Key")
 
+    # Sort Chronologically
     grid_wind_selected = (
         grid_wind_selected
         .sort_values("Time_Key")
@@ -79,10 +80,7 @@ def prepare_data(date, resolution):
 
     return grid_wind_selected
 
-# ============================================================
 # Dispatch Model
-# ============================================================
-
 def solve_dispatch(
             time_resolution,
             selected_date,
@@ -90,27 +88,23 @@ def solve_dispatch(
             gas_capacity,
             coal_capacity
 ):
-    # --------------------------------------------------------
-    # 1. Input data
-    # --------------------------------------------------------
 
+    # Prepare Data
     data = prepare_data(selected_date, time_resolution)
-    grid_price = data["Price"]
 
+    # Get Time-Varying Grid Price, Grid CO2 Intensity, and Wind Capacity Factor
+    grid_price = data["Price"]
     grid_carbon_intensity = (
         data["CO2_Intensity"] / 1000
     )
-
     wind_capacity_factor = (
         data["Wind_Capacity_Factor"]
     )
 
+    # How Many Hours Included in Certain Time Resolution
     time_steps = range(len(data))
 
-    # --------------------------------------------------------
-    # 3. Effective Technology Costs
-    # --------------------------------------------------------
-
+    # Calculate Costs of Each Technology
     technology_cost = {
         tech: (
             technologies.loc[tech, "LCOE_eur_mwh"]
@@ -121,15 +115,12 @@ def solve_dispatch(
             + technologies.loc[
                 tech,
                 "emission_factor_tco2_mwh"
-            ] * selected_carbon_price
+            ] * selected_carbon_price # Consider Carbon Cost
         )
         for tech in technologies.index
     }
 
-    # --------------------------------------------------------
-    # 4. Hourly Effective Grid Cost
-    # --------------------------------------------------------
-
+    # Cost For Every Hour
     grid_cost = {
         t: (
             grid_price.loc[t]
@@ -139,19 +130,14 @@ def solve_dispatch(
         for t in time_steps
     }
 
-    # --------------------------------------------------------
-    # 5. Optimization Model
-    # --------------------------------------------------------
-
+    # Optimization Model(Minimize)
     problem = pulp.LpProblem(
         f"data_center_dispatch_{time_resolution}",
         pulp.LpMinimize
     )
 
-    # --------------------------------------------------------
-    # 6. Decision Variables
-    # --------------------------------------------------------
-
+    # Decision Variables
+    # Generation for Onsite Source
     generation = {
         (tech, t): pulp.LpVariable(
             f"{time_resolution}_{tech}_{t}",
@@ -160,7 +146,7 @@ def solve_dispatch(
         for tech in technologies.index
         for t in time_steps
     }
-
+    # Importing Electricity from the Offsite Grid
     grid_import = {
         t: pulp.LpVariable(
             f"{time_resolution}_grid_{t}",
@@ -169,12 +155,9 @@ def solve_dispatch(
         for t in time_steps
     }
 
-    # --------------------------------------------------------
-    # 7. Constraint 1: Supply = Demand
-    # --------------------------------------------------------
-
+    # Constraint 1: Supply = Demand
     for t in time_steps:
-
+    # Sum must be Equal to Demand
         problem += (
             pulp.lpSum(
                 generation[tech, t]
@@ -184,19 +167,16 @@ def solve_dispatch(
             == DATACENTER_DEMAND_MW
         )
 
-    # --------------------------------------------------------
-    # 8. Constraint 2: Generation Capacity
-    # --------------------------------------------------------
-
+    # Constraint 2: Generation Capacity
     for tech in technologies.index:
         for t in time_steps:
-
+            # Wind Always Takes Place
             if tech == "Wind":
                 wind_available = (
                         technologies.loc[tech, "capacity_mw"]
                         * wind_capacity_factor.loc[t]
                 )
-
+            # When Wind Generation is Bigger than Demand
                 problem += (
                         generation[tech, t]
                         == min(
@@ -204,19 +184,19 @@ def solve_dispatch(
                             DATACENTER_DEMAND_MW
                         )
                 )
-
+            # Gas Turbine Capacity
             elif tech == "Gas turebine":
                 problem += (
                         generation[tech, t]
                         <= gas_capacity
                 )
-
+            # Coal Capacity
             elif tech == "Coal":
                 problem += (
                         generation[tech, t]
                         <= coal_capacity
                 )
-
+            # Rest of them
             else:
                 problem += (
                         generation[tech, t]
@@ -225,43 +205,38 @@ def solve_dispatch(
                             "capacity_mw"
                         ]
                 )
-    # --------------------------------------------------------
-    # 9. Objective Function
-    # --------------------------------------------------------
 
+    # Objective
+    # Minimizing Costs
     problem += (
-        pulp.lpSum(
+        pulp.lpSum( # Onsite Cost
             generation[tech, t]
             * technology_cost[tech]
             for tech in technologies.index
             for t in time_steps
         )
         +
-        pulp.lpSum(
+        pulp.lpSum( # Offsite Grid Cost
             grid_import[t]
             * grid_cost[t]
             for t in time_steps
         )
     )
 
-    # --------------------------------------------------------
-    # 10. Solve
-    # --------------------------------------------------------
+    # Solve the Problem
     problem.solve(
         pulp.PULP_CBC_CMD(
             msg=True
         )
     )
 
+    # Check the Status
     print(
         "\nOptimization status:",
         pulp.LpStatus[problem.status]
     )
 
-    # --------------------------------------------------------
-    # 11. Save Results
-    # --------------------------------------------------------
-
+    # Save Results
     result = pd.DataFrame(
         index=time_steps
     )
@@ -312,10 +287,7 @@ def solve_dispatch(
 
     return result
 
-# ============================================================
-# Summary
-# ============================================================
-
+# Summarize Generation, Emissions, and Costs for the Selected Period
 def summarize_dispatch(
         result,
         scenario_name,
@@ -328,10 +300,7 @@ def summarize_dispatch(
 
     number_of_hours = len(result)
 
-    # --------------------------------------------------------
-    # 1. Onsite Technologies
-    # --------------------------------------------------------
-
+    # Onsite
     for tech in technologies.index:
 
         generation_mwh = (
@@ -392,10 +361,7 @@ def summarize_dispatch(
             + carbon_cost
         )
 
-        # --------------------------------------------
-        # Capacity Factor / Utilization
-        # --------------------------------------------
-
+        # Capacity Factor
         if installed_capacity > 0:
 
             calculated_cf = (
@@ -430,10 +396,7 @@ def summarize_dispatch(
                 total_cost
         })
 
-    # --------------------------------------------------------
-    # 2. Grid
-    # --------------------------------------------------------
-
+    # Grid
     grid_generation = (
         result["Grid"].sum()
     )
@@ -475,10 +438,7 @@ def summarize_dispatch(
             grid_total_cost
     })
 
-    # --------------------------------------------------------
-    # 3. Total
-    # --------------------------------------------------------
-
+    # Total
     total_generation = sum(
         row["Generation_MWh"]
         for row in summary

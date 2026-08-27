@@ -1,34 +1,22 @@
 import matplotlib.pyplot as plt
 from pathlib import Path
 
-
-# ============================================================
 # Figure Directory
-# ============================================================
-
 FIGURE_DIR = (
     Path(__file__).resolve().parent.parent
     / "figure"
 )
-
 FIGURE_DIR.mkdir(
     exist_ok=True
 )
 
 
-# ============================================================
-# Energy Mix Plot
-# ============================================================
-
+# Plot Function for Energy Mix
 def plot_energy_mix(
         result,
         resolution,
         summary
 ):
-
-    # --------------------------------------------------------
-    # 1. Energy Sources
-    # --------------------------------------------------------
 
     energy_sources = [
         "Wind",
@@ -47,57 +35,43 @@ def plot_energy_mix(
         if result[source].abs().max() > 1e-6
     ]
 
-
-    # --------------------------------------------------------
-    # 2. Summary Data
-    # --------------------------------------------------------
-
+    # Summary for InfoText
     total_row = summary[
         summary["Energy_Source"] == "TOTAL"
     ].iloc[0]
-
     grid_row = summary[
         summary["Energy_Source"] == "Grid"
     ].iloc[0]
-
     total_generation = (
         total_row["Generation_MWh"]
     )
-
     total_co2 = (
         total_row["CO2_Emission_t"]
     )
-
     total_cost = (
         total_row["Total_Cost_EUR"]
     )
-
     grid_generation = (
         grid_row["Generation_MWh"]
     )
 
-
-    # --------------------------------------------------------
-    # 3. Grid Share
-    # --------------------------------------------------------
-
+    # Grid Share
     grid_share = (
         grid_generation
         / total_generation
         * 100
     )
 
-    # --------------------------------------------------------
-    # 4. Display Units
-    # --------------------------------------------------------
-
+    # Display Units
+    # Total Generation
+    # The total electricity supplied during the
+    # selected period. It is displayed in MWh
+    # for daily results and GWh for longer time resolutions.
     if resolution == "day":
-
         generation_value = total_generation
         generation_unit = "MWh"
 
     else:
-
         generation_value = (
                 total_generation / 1000
         )
@@ -109,10 +83,7 @@ def plot_energy_mix(
     co2_value = total_co2
     co2_unit = "tCO2"
 
-    # --------------------------------------------------------
-    # 5. Information Text
-    # --------------------------------------------------------
-
+    # InfoText
     info_text = (
         f"Total Generation: "
         f"{generation_value:.1f} {generation_unit}\n"
@@ -124,43 +95,28 @@ def plot_energy_mix(
         f"{grid_share:.1f}%"
     )
 
-    # --------------------------------------------------------
-    # 6. Figure Size
-    # --------------------------------------------------------
-
+    # Set Figure Size to Make Energy Source Colors Easier to Distinguish
     if resolution == "day":
         figure_width = 12
-
     elif resolution == "month":
         figure_width = 30
-
     elif resolution == "season":
         figure_width = 60
-
     elif resolution == "year":
         figure_width = 150
-
     else:
         figure_width = 12
 
-
-    # --------------------------------------------------------
-    # 7. Energy Mix Plot
-    # --------------------------------------------------------
-
+    # Plot the Graph!
     ax = result[
-        active_sources
+        active_sources # Just Plot Active Sources Only
     ].plot(
         kind="area",
         stacked=True,
         figsize=(figure_width, 6)
-    )
+    ) # Stacked Plot
 
-
-    # --------------------------------------------------------
-    # 8. Data Center Demand
-    # --------------------------------------------------------
-
+    # Show Demand
     ax.axhline(
         y=100,
         linestyle="--",
@@ -168,34 +124,23 @@ def plot_energy_mix(
         label="Data Center Demand"
     )
 
-
-    # --------------------------------------------------------
-    # 9. Title and Axis Labels
-    # --------------------------------------------------------
-
+    # Title and Labels
     ax.set_title(
         f"Data Center Energy Mix - "
         f"{resolution.capitalize()}"
     )
-
     ax.set_xlabel(
-        "Time"
+        "Time (H)"
     )
-
     ax.set_ylabel(
         "Power Supply (MW)"
     )
-
     ax.set_ylim(
         0,
         105
     )
 
-
-    # --------------------------------------------------------
-    # 10. Summary Information
-    # --------------------------------------------------------
-
+    # InfoText Style
     ax.text(
         1.01,
         0.65,
@@ -209,38 +154,24 @@ def plot_energy_mix(
         }
     )
 
-
-    # --------------------------------------------------------
-    # 11. Legend
-    # --------------------------------------------------------
-
+    # Legend
     ax.legend(
         loc="upper left",
         bbox_to_anchor=(1.01, 1)
     )
 
-
-    # --------------------------------------------------------
-    # 12. Grid
-    # --------------------------------------------------------
-
+    # Grid
     ax.grid(
         axis="y",
         alpha=0.3
     )
 
-
-    # --------------------------------------------------------
-    # 13. Save Figure
-    # --------------------------------------------------------
-
+    # Save the Plot
     plt.tight_layout()
-
     plt.savefig(
         FIGURE_DIR
         / f"plot_resolution_{resolution}.png",
         dpi=200,
         bbox_inches="tight"
     )
-
     plt.close()
