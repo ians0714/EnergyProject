@@ -83,14 +83,18 @@ def prepare_data(date, resolution):
 # Dispatch Model
 # ============================================================
 
-def solve_dispatch(time_resolution, selected_date):
-
+def solve_dispatch(
+            time_resolution,
+            selected_date,
+            selected_carbon_price,
+            gas_capacity,
+            coal_capacity
+):
     # --------------------------------------------------------
     # 1. Input data
     # --------------------------------------------------------
 
     data = prepare_data(selected_date, time_resolution)
-
     grid_price = data["Price"]
 
     grid_carbon_intensity = (
@@ -117,7 +121,7 @@ def solve_dispatch(time_resolution, selected_date):
             + technologies.loc[
                 tech,
                 "emission_factor_tco2_mwh"
-            ] * carbon_price
+            ] * selected_carbon_price
         )
         for tech in technologies.index
     }
@@ -130,7 +134,7 @@ def solve_dispatch(time_resolution, selected_date):
         t: (
             grid_price.loc[t]
             + grid_carbon_intensity.loc[t]
-            * carbon_price
+            * selected_carbon_price
         )
         for t in time_steps
     }
@@ -185,41 +189,42 @@ def solve_dispatch(time_resolution, selected_date):
     # --------------------------------------------------------
 
     for tech in technologies.index:
-
         for t in time_steps:
 
-            # Wind:
-            # Must-take generation based on hourly Wind CF
             if tech == "Wind":
-
                 wind_available = (
-                    technologies.loc[
-                        tech,
-                        "capacity_mw"
-                    ]
-                    * wind_capacity_factor.loc[t]
+                        technologies.loc[tech, "capacity_mw"]
+                        * wind_capacity_factor.loc[t]
                 )
 
                 problem += (
-                    generation[tech, t]
-                    == min(
-                        wind_available,
-                        DATACENTER_DEMAND_MW
-                    ) # If Energy Generated Over Demand, Surplus Curtailed
+                        generation[tech, t]
+                        == min(
+                            wind_available,
+                            DATACENTER_DEMAND_MW
+                        )
                 )
 
-            # Other onsite technologies:
-            # No input Capacity Factor
+            elif tech == "Gas turebine":
+                problem += (
+                        generation[tech, t]
+                        <= gas_capacity
+                )
+
+            elif tech == "Coal":
+                problem += (
+                        generation[tech, t]
+                        <= coal_capacity
+                )
+
             else:
-
                 problem += (
-                    generation[tech, t]
-                    <= technologies.loc[
-                        tech,
-                        "capacity_mw"
-                    ]
+                        generation[tech, t]
+                        <= technologies.loc[
+                            tech,
+                            "capacity_mw"
+                        ]
                 )
-
     # --------------------------------------------------------
     # 9. Objective Function
     # --------------------------------------------------------
@@ -242,10 +247,9 @@ def solve_dispatch(time_resolution, selected_date):
     # --------------------------------------------------------
     # 10. Solve
     # --------------------------------------------------------
-
     problem.solve(
         pulp.PULP_CBC_CMD(
-            msg=False
+            msg=True
         )
     )
 
@@ -314,7 +318,10 @@ def solve_dispatch(time_resolution, selected_date):
 
 def summarize_dispatch(
         result,
-        scenario_name
+        scenario_name,
+        selected_carbon_price,
+        gas_capacity,
+        coal_capacity
 ):
 
     summary = []
@@ -331,12 +338,17 @@ def summarize_dispatch(
             result[tech].sum()
         )
 
-        installed_capacity = (
-            technologies.loc[
+        if tech == "Gas turebine":
+            installed_capacity = gas_capacity
+
+        elif tech == "Coal":
+            installed_capacity = coal_capacity
+
+        else:
+            installed_capacity = technologies.loc[
                 tech,
                 "capacity_mw"
             ]
-        )
 
         emission_factor = (
             technologies.loc[
@@ -371,7 +383,7 @@ def summarize_dispatch(
         # Carbon cost
         carbon_cost = (
             carbon_emission
-            * carbon_price
+            * selected_carbon_price
         )
 
         # Total cost
@@ -438,7 +450,7 @@ def summarize_dispatch(
 
     grid_carbon_cost = (
         grid_emission
-        * carbon_price
+        * selected_carbon_price
     )
 
     grid_total_cost = (

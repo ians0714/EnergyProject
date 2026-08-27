@@ -22,7 +22,8 @@ FIGURE_DIR.mkdir(
 
 def plot_energy_mix(
         result,
-        resolution
+        resolution,
+        summary
 ):
 
     # --------------------------------------------------------
@@ -39,21 +40,92 @@ def plot_energy_mix(
         "Grid"
     ]
 
-    # Only plot sources that are actually used
+    # Only plot energy sources that are actually used
     active_sources = [
         source
         for source in energy_sources
         if result[source].abs().max() > 1e-6
     ]
 
-    print(
-        f"{resolution} active sources:",
-        active_sources
+
+    # --------------------------------------------------------
+    # 2. Summary Data
+    # --------------------------------------------------------
+
+    total_row = summary[
+        summary["Energy_Source"] == "TOTAL"
+    ].iloc[0]
+
+    grid_row = summary[
+        summary["Energy_Source"] == "Grid"
+    ].iloc[0]
+
+    total_generation = (
+        total_row["Generation_MWh"]
+    )
+
+    total_co2 = (
+        total_row["CO2_Emission_t"]
+    )
+
+    total_cost = (
+        total_row["Total_Cost_EUR"]
+    )
+
+    grid_generation = (
+        grid_row["Generation_MWh"]
     )
 
 
     # --------------------------------------------------------
-    # 2. Figure Size
+    # 3. Grid Share
+    # --------------------------------------------------------
+
+    grid_share = (
+        grid_generation
+        / total_generation
+        * 100
+    )
+
+    # --------------------------------------------------------
+    # 4. Display Units
+    # --------------------------------------------------------
+
+    if resolution == "day":
+
+        generation_value = total_generation
+        generation_unit = "MWh"
+
+    else:
+
+        generation_value = (
+                total_generation / 1000
+        )
+        generation_unit = "GWh"
+
+    cost_value = total_cost
+    cost_unit = "EUR"
+
+    co2_value = total_co2
+    co2_unit = "tCO2"
+
+    # --------------------------------------------------------
+    # 5. Information Text
+    # --------------------------------------------------------
+
+    info_text = (
+        f"Total Generation: "
+        f"{generation_value:.1f} {generation_unit}\n"
+        f"Total Cost: "
+        f"{cost_value:.2f} {cost_unit}\n"
+        f"Total CO2: "
+        f"{co2_value:.2f} {co2_unit}\n"
+        f"Grid Share: "
+        f"{grid_share:.1f}%"
+    )
+
+    # --------------------------------------------------------
+    # 6. Figure Size
     # --------------------------------------------------------
 
     if resolution == "day":
@@ -73,10 +145,12 @@ def plot_energy_mix(
 
 
     # --------------------------------------------------------
-    # 3. Plot
+    # 7. Energy Mix Plot
     # --------------------------------------------------------
 
-    ax = result[active_sources].plot(
+    ax = result[
+        active_sources
+    ].plot(
         kind="area",
         stacked=True,
         figsize=(figure_width, 6)
@@ -84,7 +158,7 @@ def plot_energy_mix(
 
 
     # --------------------------------------------------------
-    # 4. Data Center Demand
+    # 8. Data Center Demand
     # --------------------------------------------------------
 
     ax.axhline(
@@ -96,7 +170,7 @@ def plot_energy_mix(
 
 
     # --------------------------------------------------------
-    # 5. Labels
+    # 9. Title and Axis Labels
     # --------------------------------------------------------
 
     ax.set_title(
@@ -109,7 +183,7 @@ def plot_energy_mix(
     )
 
     ax.set_ylabel(
-        "Power (MW)"
+        "Power Supply (MW)"
     )
 
     ax.set_ylim(
@@ -119,7 +193,25 @@ def plot_energy_mix(
 
 
     # --------------------------------------------------------
-    # 6. Legend
+    # 10. Summary Information
+    # --------------------------------------------------------
+
+    ax.text(
+        1.01,
+        0.65,
+        info_text,
+        transform=ax.transAxes,
+        verticalalignment="top",
+        fontsize=10,
+        bbox={
+            "boxstyle": "round",
+            "alpha": 0.1
+        }
+    )
+
+
+    # --------------------------------------------------------
+    # 11. Legend
     # --------------------------------------------------------
 
     ax.legend(
@@ -129,7 +221,7 @@ def plot_energy_mix(
 
 
     # --------------------------------------------------------
-    # 7. Grid
+    # 12. Grid
     # --------------------------------------------------------
 
     ax.grid(
@@ -139,7 +231,7 @@ def plot_energy_mix(
 
 
     # --------------------------------------------------------
-    # 8. Save
+    # 13. Save Figure
     # --------------------------------------------------------
 
     plt.tight_layout()
