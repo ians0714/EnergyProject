@@ -16,22 +16,22 @@ SEASON_MONTHS = {
     "winter": [12, 1, 2]
 }
 
-# Resolutions
-resolutions = ["day", "month", "season", "year"]
+# Horizons
+horizons = ["day", "month", "season", "year"]
 
-# Prepare for Time Resolution
-def prepare_data(date, resolution):
+# Prepare for Time Horizon
+def prepare_data(date, horizon):
     month = date.month
 
     # Prepare Data of Certain Scale
-    if resolution == resolutions[0]:
+    if horizon == horizons[0]:
         day = date.day
         grid_selected = grid_data[(grid_data.index.month == month) & (grid_data.index.day == day)].copy()
         wind_selected = wind_data[(wind_data.index.month == month) & (wind_data.index.day == day)].copy()
-    elif resolution == resolutions[1]:
+    elif horizon == horizons[1]:
         grid_selected = grid_data[(grid_data.index.month == month)].copy()
         wind_selected = wind_data[(wind_data.index.month == month)].copy()
-    elif resolution == resolutions[2]: # Get Seasonal Data
+    elif horizon == horizons[2]: # Get Seasonal Data
         season = (
             "spring" if month in [3, 4, 5]
             else "summer" if month in [6, 7, 8]
@@ -49,13 +49,13 @@ def prepare_data(date, resolution):
             wind_data.index.month.isin(season_date)
         ].copy()
 
-    elif resolution == resolutions[3]:
+    elif horizon == horizons[3]:
         grid_selected = grid_data.copy()
         wind_selected = wind_data.copy()
 
     else: # If Error
         raise ValueError(
-            "resolution must be day, month, season, or year"
+            "horizon must be day, month, season, or year"
         )
 
     # Just get Month and Day from Index
@@ -82,7 +82,7 @@ def prepare_data(date, resolution):
 
 # Dispatch Model
 def solve_dispatch(
-            time_resolution,
+            time_horizon,
             selected_date,
             selected_carbon_price,
             gas_capacity,
@@ -90,7 +90,7 @@ def solve_dispatch(
 ):
 
     # Prepare Data
-    data = prepare_data(selected_date, time_resolution)
+    data = prepare_data(selected_date, time_horizon)
 
     # Get Time-Varying Grid Price, Grid CO2 Intensity, and Wind Capacity Factor
     grid_price = data["Price"]
@@ -101,7 +101,7 @@ def solve_dispatch(
         data["Wind_Capacity_Factor"]
     )
 
-    # How Many Hours Included in Certain Time Resolution
+    # How Many Hours Included in Certain Time Horizon
     time_steps = range(len(data))
 
     # Calculate Costs of Each Technology
@@ -132,7 +132,7 @@ def solve_dispatch(
 
     # Optimization Model(Minimize)
     problem = pulp.LpProblem(
-        f"data_center_dispatch_{time_resolution}",
+        f"data_center_dispatch_{time_horizon}",
         pulp.LpMinimize
     )
 
@@ -140,16 +140,17 @@ def solve_dispatch(
     # Generation for Onsite Source
     generation = {
         (tech, t): pulp.LpVariable(
-            f"{time_resolution}_{tech}_{t}",
+            f"{time_horizon}_{tech}_{t}",
             lowBound=0
         )
         for tech in technologies.index
         for t in time_steps
     }
+
     # Importing Electricity from the Offsite Grid
     grid_import = {
         t: pulp.LpVariable(
-            f"{time_resolution}_grid_{t}",
+            f"{time_horizon}_grid_{t}",
             lowBound=0
         )
         for t in time_steps

@@ -2,36 +2,30 @@ import matplotlib.pyplot as plt
 from pathlib import Path
 
 # Figure Directory
-FIGURE_DIR = (
-    Path(__file__).resolve().parent.parent
-    / "figure"
-)
-FIGURE_DIR.mkdir(
-    exist_ok=True
-)
+FIGURE_DIR = (Path(__file__).resolve().parent.parent / "figure")
+FIGURE_DIR.mkdir(exist_ok=True)
 
+ENERGY_SOURCES = [
+    "Wind",
+    "Gas turebine",
+    "Coal",
+    "Nuclear",
+    "Biomass",
+    "BioCH4-Gas Turebine",
+    "Grid"
+]
 
 # Plot Function for Energy Mix
 def plot_energy_mix(
         result,
-        resolution,
+        horizon,
         summary
 ):
-
-    energy_sources = [
-        "Wind",
-        "Gas turebine",
-        "Coal",
-        "Nuclear",
-        "Biomass",
-        "BioCH4-Gas Turebine",
-        "Grid"
-    ]
 
     # Only plot energy sources that are actually used
     active_sources = [
         source
-        for source in energy_sources
+        for source in ENERGY_SOURCES
         if result[source].abs().max() > 1e-6
     ]
 
@@ -64,10 +58,10 @@ def plot_energy_mix(
 
     # Display Units
     # Total Generation
-    # The total electricity supplied during the
-    # selected period. It is displayed in MWh
-    # for daily results and GWh for longer time resolutions.
-    if resolution == "day":
+    # The Total Electricity Supplied During the
+    # Selected Period. It is Displayed in MWh
+    # for Daily Results and GWh for Longer Tme Horizons.
+    if horizon == "day":
         generation_value = total_generation
         generation_unit = "MWh"
 
@@ -96,13 +90,13 @@ def plot_energy_mix(
     )
 
     # Set Figure Size to Make Energy Source Colors Easier to Distinguish
-    if resolution == "day":
+    if horizon == "day":
         figure_width = 12
-    elif resolution == "month":
+    elif horizon == "month":
         figure_width = 30
-    elif resolution == "season":
+    elif horizon == "season":
         figure_width = 60
-    elif resolution == "year":
+    elif horizon == "year":
         figure_width = 150
     else:
         figure_width = 12
@@ -127,7 +121,7 @@ def plot_energy_mix(
     # Title and Labels
     ax.set_title(
         f"Data Center Energy Mix - "
-        f"{resolution.capitalize()}"
+        f"{horizon.capitalize()}"
     )
     ax.set_xlabel(
         "Time (H)"
@@ -170,7 +164,7 @@ def plot_energy_mix(
     plt.tight_layout()
     plt.savefig(
         FIGURE_DIR
-        / f"plot_resolution_{resolution}.png",
+        / f"plot_horizon_{horizon}.png",
         dpi=200,
         bbox_inches="tight"
     )

@@ -1,9 +1,12 @@
 import pandas as pd
+from pandas.core import col
+
 from src.modeling import solve_dispatch, summarize_dispatch
 from src.plotting import plot_energy_mix
 from src.energy_n_cost_data import technologies, carbon_price
+from src.plotting_time_resolution import plot_time_resolution
 
-resolutions = ["day", "month", "season", "year"]
+horizons = ["day", "month", "season", "year"]
 
 def main():
     # Get Selected Date from User
@@ -50,10 +53,10 @@ def main():
         else default_coal_capacity
     )
 
-    # Run Solve for Each Resolution
-    for resolution in resolutions:
+    # Run Solve for Each Time Horizon
+    for horizon in horizons:
         result = solve_dispatch(
-            resolution,
+            horizon,
             selected_date,
             selected_carbon_price,
             gas_capacity,
@@ -62,7 +65,7 @@ def main():
 
         summary = summarize_dispatch(
             result,
-            resolution,
+            horizon,
             selected_carbon_price,
             gas_capacity,
             coal_capacity
@@ -70,9 +73,18 @@ def main():
 
         plot_energy_mix(
             result,
-            resolution,
+            horizon,
             summary
         )
+
+        if horizon != "day":
+            # Plot for Each Time Resolution
+            plot_time_resolution(
+                horizon,
+                selected_carbon_price,
+                gas_capacity,
+                coal_capacity
+            )
 
 if __name__ == "__main__":
     main()
