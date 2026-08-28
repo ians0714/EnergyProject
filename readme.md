@@ -14,13 +14,17 @@ while minimizing the total cost?
          Carbon price [EUR/tCO2] (default 200): 200
          Gas turbine capacity [MW] (default 100): 100
          Coal capacity [MW] (default 10): 10
-   5) After a few seconds, figures with four different time resolutions will be generated.
+   5) After a few seconds, figures with four different time horizons and resolutions will be generated.
       Open the generated figure files to view the results. The figures are not displayed automatically.
       If you select a date,
       ~day.png shows the data for the selected date,
       ~month.png shows the data for the corresponding month,
       ~season.png shows the data for the corresponding season,
       and ~year.png shows the yearly data.
+      In addition, the project compares different temporal resolutions by aggregating hourly input data before optimization:
+      - Monthly resolution
+      - Seasonal resolution
+      - Annual resolution
 
 # What the Numbers Mean?
    1) Total Generation [MWh]
