@@ -1,9 +1,75 @@
 Reference
 1. input_data.xlsx
 
+1) Generation Cost
+
+Gas Turbine:
+Fraunhofer ISE (2021), Levelized Cost of Electricity – Renewable Energy Technologies.
+
+Coal:
+Fraunhofer ISE (2021), Levelized Cost of Electricity – Renewable Energy Technologies.
+
+Nuclear:
+Fraunhofer ISE (2024), Stromgestehungskosten Erneuerbare Energien.
+
+Biomass:
+Fraunhofer ISE (2024), Stromgestehungskosten Erneuerbare Energien.
+Bundesnetzagentur (2024), Biomass tender ceiling-price benchmark.
+
+BioCH4-Gas Turbine:
+Umweltbundesamt (2020), Texte 24/2020:
+Optionen für Biogas-Bestandsanlagen bis 2030.
+
+Generation costs were used to calculate
+the electricity generation cost of each onsite power source.
+
+2) CO2 EMISSION FACTORS
+
+Source:
+IPCC (2014), Working Group III, Annex III,
+Table A.III.2: Emissions of selected electricity supply technologies.
+https://www.ipcc.ch/site/assets/uploads/2018/02/ipcc_wg3_ar5_annex-iii.pdf
+Emission factors were used to calculate CO2 emissions from each technology,
+which were then converted into CO2 costs using the carbon price.
+
+3) Capacity Factor
+
+Source:
+Timilsina, Govinda R. (2020).
+"Demystifying the Costs of Electricity Generation Technologies."
+World Bank Policy Research Working Paper, WPS 9303.
+
+Dataset:
+https://energydata.info/dataset/global-data-on-levelized-cost-of-electricity-generation-lcoe
+
+Note:
+The BioCH4-Gas Turbine capacity factor was assumed to be the same as
+the Gas Turbine because a corresponding numerical value was unavailable.
 
 2. germany-seasonal-co2-v2(by-Notebook-LM).xlsx
 
+Grid Electricity Price and CO2 Intensity
+
+Input variables:
+- Hourly grid electricity price (EUR/MWh)
+- Hourly grid CO2 intensity (gCO2eq/kWh)
+
+Dataset: Germany 2025 Seasonal & Annual Hourly CO2 Dataset
+
+The hourly values used in this model are estimated/synthetic input data
+generated for the purpose of the project.
+
+The dataset defines representative 24-hour profiles for four seasons
+(Winter, Spring, Summer, and Fall). These seasonal profiles are then
+expanded into an 8,760-hour annual profile according to the corresponding
+season.
+
+Therefore, these values should not be interpreted as actual hourly
+German electricity market prices or measured hourly grid CO2 intensity.
+
+File:
+Germany 2025 Seasonal & Annual Hourly CO2 Dataset
+Version 2.0
 
 3. wind
 Wind availability / capacity factor data
@@ -19,5 +85,5 @@ Energy, 114, 1224-1239.
 https://doi.org/10.1016/j.energy.2016.08.068
 
 Project use:
-Germany onshore hourly wind capacity factor was extracted for [YEAR]
+Germany onshore hourly wind capacity factor was extracted for 2023
 and used as the hourly wind availability profile.
